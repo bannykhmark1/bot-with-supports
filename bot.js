@@ -88,7 +88,7 @@ bot.on('message', async (msg) => {
             try {
                 const task = await createTask(summary, description);
                 const taskId = task.id || 'Неизвестно';
-                const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${taskId}`;
+                const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}`;
                 bot.sendMessage(chatId, responseMessage, replyKeyboard);
             } catch (error) {
                 const errorMessage = error.response ? error.response.data.errorMessages[0] : 'Неизвестная ошибка';
