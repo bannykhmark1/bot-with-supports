@@ -45,7 +45,7 @@ const createTask = async (summary, description, login) => {
         summary,
         description,
         queue: YANDEX_TRACKER_QUEUE,
-        followers: [login], // Adding the login to the followers field
+        author: [login], // Adding the login to the followers field
     };
 
     try {
