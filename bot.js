@@ -18,7 +18,7 @@ const SUMMARY = 'SUMMARY';
 const DESCRIPTION = 'DESCRIPTION';
 const EMAIL = 'EMAIL';
 
-const allowedDomains = ['kurganmk', 'reftrp', 'hobbs-it'];
+const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it'];
 
 const replyKeyboard = {
     reply_markup: {
@@ -113,7 +113,7 @@ bot.on('message', async (msg) => {
             const domain = emailParts[1] ? emailParts[1].split('.')[0] : '';
             
             if (!allowedDomains.includes(domain)) {
-                bot.sendMessage(chatId, 'Недопустимый домен почты. Пожалуйста, введите корпоративную почту с допустимым доменом (kurganmk, reftrp, hobbs-it).', {
+                bot.sendMessage(chatId, 'Недопустимый домен почты. Пожалуйста, введите корпоративную почту с допустимым доменом (kurganmk, reftp, hobbs-it).', {
                     reply_markup: {
                         keyboard: [['🔙 Назад', '❌ Отмена']],
                         one_time_keyboard: true,
