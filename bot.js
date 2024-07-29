@@ -45,7 +45,7 @@ const createTask = async (summary, description, login) => {
         summary,
         description,
         queue: YANDEX_TRACKER_QUEUE,
-        author: { login }, // Set the email as the author of the task
+        author: [login], // Adding the login to the followers field
     };
 
     try {
@@ -121,15 +121,17 @@ bot.on('message', async (msg) => {
                     },
                 });
             } else {
+                const login = emailParts[0];
                 const { summary, description } = states[chatId];
                 const updatedDescription = `${description}\n\nКорпоративная почта: ${email}`;
 
                 try {
-                    const task = await createTask(summary, updatedDescription, email);
+                    const task = await createTask(summary, updatedDescription, login);
+                    const taskId = task.id || 'Неизвестно';
                     const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`;
                     bot.sendMessage(chatId, responseMessage, replyKeyboard);
                 } catch (error) {
-                    const errorMessage = error.response && error.response.data && error.response.data.errors && error.response.data.errors.author ? 'пользователь не существует' : 'Неизвестная ошибка';
+                    const errorMessage = error.response && error.response.data && error.response.data.errors && error.response.data.errors.followers ? 'пользователь не существует' : 'Неизвестная ошибка';
                     if (errorMessage === 'пользователь не существует') {
                         bot.sendMessage(chatId, `Ошибка создания задачи: Введенный email не существует. Пожалуйста, введите корректную корпоративную почту.`, {
                             reply_markup: {
