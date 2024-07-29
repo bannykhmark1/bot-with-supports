@@ -16,6 +16,9 @@ const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
 const states = {};
 const SUMMARY = 'SUMMARY';
 const DESCRIPTION = 'DESCRIPTION';
+const EMAIL = 'EMAIL';
+
+const allowedDomains = ['kurganmk', 'reftrp', 'hobbs-it'];
 
 const replyKeyboard = {
     reply_markup: {
@@ -31,7 +34,7 @@ const removeKeyboard = {
     },
 };
 
-const createTask = async (summary, description) => {
+const createTask = async (summary, description, login) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
         'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
@@ -42,6 +45,7 @@ const createTask = async (summary, description) => {
         summary,
         description,
         queue: YANDEX_TRACKER_QUEUE,
+        followers: [login], // Adding the login to the followers field
     };
 
     try {
@@ -54,7 +58,8 @@ const createTask = async (summary, description) => {
 };
 
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, 'Привет! Выберите команду для продолжения:', replyKeyboard);
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 'Привет! Выберите команду для продолжения:', replyKeyboard);
 });
 
 bot.on('message', async (msg) => {
@@ -82,20 +87,66 @@ bot.on('message', async (msg) => {
             states[chatId].state = SUMMARY;
             bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
         } else {
-            const { summary } = states[chatId];
-            const description = text;
+            states[chatId].description = text;
+            states[chatId].state = EMAIL;
+            bot.sendMessage(chatId, 'Пожалуйста, введите вашу корпоративную почту.', {
+                reply_markup: {
+                    keyboard: [['🔙 Назад', '❌ Отмена']],
+                    one_time_keyboard: true,
+                    resize_keyboard: true,
+                },
+            });
+        }
+    } else if (states[chatId] && states[chatId].state === EMAIL) {
+        if (text === '🔙 Назад') {
+            states[chatId].state = DESCRIPTION;
+            bot.sendMessage(chatId, 'Теперь введите описание задачи.', {
+                reply_markup: {
+                    keyboard: [['🔙 Назад', '❌ Отмена']],
+                    one_time_keyboard: true,
+                    resize_keyboard: true,
+                },
+            });
+        } else {
+            const email = text;
+            const emailParts = email.split('@');
+            const domain = emailParts[1] ? emailParts[1].split('.')[0] : '';
+            
+            if (!allowedDomains.includes(domain)) {
+                bot.sendMessage(chatId, 'Недопустимый домен почты. Пожалуйста, введите корпоративную почту с допустимым доменом (kurganmk, reftrp, hobbs-it).', {
+                    reply_markup: {
+                        keyboard: [['🔙 Назад', '❌ Отмена']],
+                        one_time_keyboard: true,
+                        resize_keyboard: true,
+                    },
+                });
+            } else {
+                const login = emailParts[0];
+                const { summary, description } = states[chatId];
+                const updatedDescription = `${description}\n\nКорпоративная почта: ${email}`;
 
-            try {
-                const task = await createTask(summary, description);
-                const taskId = task.id || 'Неизвестно';
-                const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}`;
-                bot.sendMessage(chatId, responseMessage, replyKeyboard);
-            } catch (error) {
-                const errorMessage = error.response ? error.response.data.errorMessages[0] : 'Неизвестная ошибка';
-                bot.sendMessage(chatId, `Ошибка создания задачи: ${errorMessage}`, replyKeyboard);
+                try {
+                    const task = await createTask(summary, updatedDescription, login);
+                    const taskId = task.id || 'Неизвестно';
+                    const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`;
+                    bot.sendMessage(chatId, responseMessage, replyKeyboard);
+                } catch (error) {
+                    const errorMessage = error.response && error.response.data && error.response.data.errors && error.response.data.errors.followers ? 'пользователь не существует' : 'Неизвестная ошибка';
+                    if (errorMessage === 'пользователь не существует') {
+                        bot.sendMessage(chatId, `Ошибка создания задачи: Введенный email не существует. Пожалуйста, введите корректную корпоративную почту.`, {
+                            reply_markup: {
+                                keyboard: [['🔙 Назад', '❌ Отмена']],
+                                one_time_keyboard: true,
+                                resize_keyboard: true,
+                            },
+                        });
+                    } else {
+                        bot.sendMessage(chatId, `Ошибка создания задачи: ${errorMessage}`, replyKeyboard);
+                    }
+                }
+
+                states[chatId].state = EMAIL;
             }
-
-            states[chatId] = {};
         }
     }
 });
