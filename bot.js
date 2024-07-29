@@ -34,7 +34,7 @@ const removeKeyboard = {
     },
 };
 
-const createTask = async (summary, description, email) => {
+const createTask = async (summary, description, login) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
         'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
@@ -45,7 +45,7 @@ const createTask = async (summary, description, email) => {
         summary,
         description,
         queue: YANDEX_TRACKER_QUEUE,
-        author: { email }, // Set the email as the author of the task
+        author: { login }, // Set the email as the author of the task
     };
 
     try {
