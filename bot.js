@@ -167,7 +167,7 @@ bot.on('message', async (msg) => {
                     await sendVerificationEmail(email, code);
                     states[chatId].email = email;
                     states[chatId].state = VERIFICATION;
-                    bot.sendMessage(chatId, 'Код подтверждения отправлен на вашу почту. Пожалуйста, введите его для завершения создания задачи.', {
+                    bot.sendMessage(chatId, 'Код подтверждения отправлен на вашу почту. Пожалуйста, введите его для завершения создания задачи. Если кода нет в основной папке почты, проверьте папку Спам', {
                         reply_markup: {
                             keyboard: [['🔙 Назад', '❌ Отмена']],
                             one_time_keyboard: true,
@@ -198,7 +198,7 @@ bot.on('message', async (msg) => {
 
                 try {
                     const task = await createTask(summary, updatedDescription, login);
-                    const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}`;
+                    const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`;
                     bot.sendMessage(chatId, responseMessage, replyKeyboard);
                 } catch (error) {
                     bot.sendMessage(chatId, `Ошибка создания задачи: ${error.message}`, replyKeyboard);
@@ -216,3 +216,4 @@ bot.on('message', async (msg) => {
     }
 });
 ``
+
