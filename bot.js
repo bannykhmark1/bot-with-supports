@@ -23,7 +23,9 @@ const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it'];
 const emailVerificationCodes = {}; // для хранения кодов подтверждения
 
 const transporter = nodemailer.createTransport({
-    service: 'connect.smtp.bz',
+    host: 'connect.smtp.bz', // замените на правильный хост
+    port: 587, // или другой порт, если это необходимо
+    secure: false, // true для 465 порта, false для других
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
@@ -31,12 +33,22 @@ const transporter = nodemailer.createTransport({
 });
 
 const sendVerificationEmail = async (email, code) => {
+    const htmlContent = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #333;">
+            <h2 style="color: #4CAF50;">Код верификации</h2>
+            <p>Ваш код верификации: <strong style="font-size: 1.2em;">${code}</strong></p>
+            <p>Введите его в Телеграм боте, чтобы создать задачу.</p>
+            <p>Спасибо!</p>
+            <p style="color: #999; font-size: 0.9em;">Это письмо сгенерировано автоматически. Пожалуйста, не отвечайте на него.</p>
+        </div>
+    `;
+
     try {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: email,
             subject: 'Код верификации',
-            text: `Ваш код верификации: ${code}. Введите его в Телеграм боте, чтобы создать задачу.`
+            html: htmlContent
         });
         console.log('Verification email sent successfully');
     } catch (error) {
@@ -203,3 +215,4 @@ bot.on('message', async (msg) => {
         }
     }
 });
+``
