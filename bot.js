@@ -97,6 +97,8 @@ const createTask = async (summary, description, login) => {
 
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
+    // Очистите состояние пользователя
+    delete states[chatId];
     bot.sendMessage(chatId, 'Привет! Выберите команду для продолжения:', replyKeyboard);
 });
 
@@ -104,11 +106,14 @@ bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
 
+    console.log('Received message:', text);
+    console.log('Current state:', states[chatId]);
+
     if (text === '📝 Создать задачу') {
         states[chatId] = { state: SUMMARY };
         bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
     } else if (text === '❌ Отмена') {
-        states[chatId] = {};
+        delete states[chatId]; // Очистите состояние пользователя
         bot.sendMessage(chatId, 'Создание задачи отменено.', replyKeyboard);
     } else if (states[chatId] && states[chatId].state === SUMMARY) {
         states[chatId].summary = text;
@@ -215,5 +220,3 @@ bot.on('message', async (msg) => {
         }
     }
 });
-``
-
