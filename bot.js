@@ -1,10 +1,10 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const dotenv = require('dotenv');
+const nodemailer = require('nodemailer'); // или другой почтовый модуль
 
 dotenv.config();
 
-// Load environment variables
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const YANDEX_TRACKER_URL = process.env.YANDEX_TRACKER_URL;
 const YANDEX_TRACKER_ORG_ID = process.env.YANDEX_TRACKER_ORG_ID;
@@ -17,51 +17,29 @@ const states = {};
 const SUMMARY = 'SUMMARY';
 const DESCRIPTION = 'DESCRIPTION';
 const EMAIL = 'EMAIL';
+const VERIFICATION = 'VERIFICATION';
 
 const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it'];
+const emailVerificationCodes = {}; // для хранения кодов подтверждения
 
-const replyKeyboard = {
-    reply_markup: {
-        keyboard: [['📝 Создать задачу', '❌ Отмена']],
-        one_time_keyboard: true,
-        resize_keyboard: true,
-    },
-};
-
-const removeKeyboard = {
-    reply_markup: {
-        remove_keyboard: true,
-    },
-};
-
-const createTask = async (summary, description, login) => {
-    const headers = {
-        'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
-        'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
-        'Content-Type': 'application/json',
-    };
-
-    const data = {
-        summary,
-        description,
-        queue: YANDEX_TRACKER_QUEUE,
-        followers: [login], // Adding the login to the followers field
-        author: login
-    };
-
-    try {
-        const response = await axios.post(YANDEX_TRACKER_URL, data, { headers });
-        return response.data;
-    } catch (error) {
-        console.error('Error creating task:', error.response ? error.response.data : error.message);
-        throw error;
+const transporter = nodemailer.createTransport({
+    service: 'yandex', // или другой сервис
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
     }
+});
+
+const sendVerificationEmail = (email, code) => {
+    return transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: 'Код верификации',
+        text: `Ваш код верификации: ${code}. Введите его в Телеграм боте, чтобы создать задачу.`
+    });
 };
 
-bot.onText(/\/start/, (msg) => {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Привет! Выберите команду для продолжения:', replyKeyboard);
-});
+// ... остальной код
 
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -123,30 +101,57 @@ bot.on('message', async (msg) => {
                 });
             } else {
                 const login = emailParts[0];
-                const { summary, description } = states[chatId];
+                const code = Math.floor(100000 + Math.random() * 900000); // генерируем код
+                emailVerificationCodes[chatId] = code; // сохраняем код для проверки
+                
+                try {
+                    await sendVerificationEmail(email, code);
+                    states[chatId].email = email;
+                    states[chatId].state = VERIFICATION;
+                    bot.sendMessage(chatId, 'Код подтверждения отправлен на вашу почту. Пожалуйста, введите его для завершения создания задачи.', {
+                        reply_markup: {
+                            keyboard: [['🔙 Назад', '❌ Отмена']],
+                            one_time_keyboard: true,
+                            resize_keyboard: true,
+                        },
+                    });
+                } catch (error) {
+                    bot.sendMessage(chatId, 'Ошибка при отправке кода подтверждения. Пожалуйста, попробуйте снова позже.', replyKeyboard);
+                }
+            }
+        }
+    } else if (states[chatId] && states[chatId].state === VERIFICATION) {
+        if (text === '🔙 Назад') {
+            states[chatId].state = EMAIL;
+            bot.sendMessage(chatId, 'Пожалуйста, введите вашу корпоративную почту.', {
+                reply_markup: {
+                    keyboard: [['🔙 Назад', '❌ Отмена']],
+                    one_time_keyboard: true,
+                    resize_keyboard: true,
+                },
+            });
+        } else {
+            const enteredCode = parseInt(text, 10);
+            if (emailVerificationCodes[chatId] && emailVerificationCodes[chatId] === enteredCode) {
+                const { summary, description, email } = states[chatId];
+                const login = email.split('@')[0];
                 const updatedDescription = `${description}\n\nКорпоративная почта: ${email}`;
 
                 try {
                     const task = await createTask(summary, updatedDescription, login);
-                    const taskId = task.id || 'Неизвестно';
-                    const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`;
+                    const responseMessage = `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}`;
                     bot.sendMessage(chatId, responseMessage, replyKeyboard);
                 } catch (error) {
-                    const errorMessage = error.response && error.response.data && error.response.data.errors && error.response.data.errors.followers ? 'пользователь не существует' : 'Неизвестная ошибка';
-                    if (errorMessage === 'пользователь не существует') {
-                        bot.sendMessage(chatId, `Ошибка создания задачи: Введенный email не существует. Пожалуйста, введите корректную корпоративную почту.`, {
-                            reply_markup: {
-                                keyboard: [['🔙 Назад', '❌ Отмена']],
-                                one_time_keyboard: true,
-                                resize_keyboard: true,
-                            },
-                        });
-                    } else {
-                        bot.sendMessage(chatId, `Ошибка создания задачи: ${errorMessage}`, replyKeyboard);
-                    }
+                    bot.sendMessage(chatId, `Ошибка создания задачи: ${error.message}`, replyKeyboard);
                 }
-
-                states[chatId].state = EMAIL;
+            } else {
+                bot.sendMessage(chatId, 'Неверный код подтверждения. Пожалуйста, попробуйте снова.', {
+                    reply_markup: {
+                        keyboard: [['🔙 Назад', '❌ Отмена']],
+                        one_time_keyboard: true,
+                        resize_keyboard: true,
+                    },
+                });
             }
         }
     }
