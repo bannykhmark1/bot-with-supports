@@ -23,23 +23,70 @@ const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it'];
 const emailVerificationCodes = {}; // для хранения кодов подтверждения
 
 const transporter = nodemailer.createTransport({
-    service: 'yandex', // или другой сервис
+    service: 'connect.smtp.bz',
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     }
 });
 
-const sendVerificationEmail = (email, code) => {
-    return transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: 'Код верификации',
-        text: `Ваш код верификации: ${code}. Введите его в Телеграм боте, чтобы создать задачу.`
-    });
+const sendVerificationEmail = async (email, code) => {
+    try {
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Код верификации',
+            text: `Ваш код верификации: ${code}. Введите его в Телеграм боте, чтобы создать задачу.`
+        });
+        console.log('Verification email sent successfully');
+    } catch (error) {
+        console.error('Error sending verification email:', error);
+        throw error; // Это нужно для передачи ошибки на уровень выше
+    }
 };
 
-// ... остальной код
+const replyKeyboard = {
+    reply_markup: {
+        keyboard: [['📝 Создать задачу', '❌ Отмена']],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+    },
+};
+
+const removeKeyboard = {
+    reply_markup: {
+        remove_keyboard: true,
+    },
+};
+
+const createTask = async (summary, description, login) => {
+    const headers = {
+        'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
+        'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
+        'Content-Type': 'application/json',
+    };
+
+    const data = {
+        summary,
+        description,
+        queue: YANDEX_TRACKER_QUEUE,
+        followers: [login], // Adding the login to the followers field
+        author: login
+    };
+
+    try {
+        const response = await axios.post(YANDEX_TRACKER_URL, data, { headers });
+        return response.data;
+    } catch (error) {
+        console.error('Error creating task:', error.response ? error.response.data : error.message);
+        throw error;
+    }
+};
+
+bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 'Привет! Выберите команду для продолжения:', replyKeyboard);
+});
 
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
