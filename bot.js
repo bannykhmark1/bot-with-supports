@@ -4,7 +4,7 @@ const dotenv = require('dotenv');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
-const { sequelize, TelegramUser, MessageLog, Image } = require('./models'); // Импортируем модели
+const { sequelize, TelegramUser, MessageLog, Image } = require('./models');
 
 dotenv.config();
 
@@ -162,14 +162,15 @@ const createTask = async (summary, description, login, imageData) => {
 
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
-    delete states[chatId];
+    delete states[chatId]; // Очистка состояния при старте
 
     const user = await TelegramUser.findByPk(chatId);
     if (user) {
+        states[chatId] = { state: null }; // Устанавливаем начальное состояние
         bot.sendMessage(chatId, 'Привет! Выберите команду для продолжения:', replyKeyboard);
     } else {
         bot.sendMessage(chatId, 'Привет! Введите вашу корпоративную почту для продолжения:', removeKeyboard);
-        states[chatId] = { state: EMAIL };
+        states[chatId] = { state: EMAIL }; // Устанавливаем состояние EMAIL
     }
 });
 
