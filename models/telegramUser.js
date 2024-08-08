@@ -5,7 +5,7 @@ const nodemailer = require('nodemailer');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const { Sequelize, TelegramUser, MessageLog } = require('./models');
+const { Sequelize, TelegramUser, MessageLog } = require('../models');
 
 dotenv.config();
 
