@@ -10,7 +10,7 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
         },
         data: {
-            type: DataTypes.BLOB('long'),
+            type: DataTypes.BYTEA, // Используем BYTEA для PostgreSQL
             allowNull: false,
         },
     });
