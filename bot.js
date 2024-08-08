@@ -2,7 +2,9 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const nodemailer = require('nodemailer');
-const { sequelize, TelegramUser, Image } = require('./models'); // Импортируем модели
+const fs = require('fs');
+const path = require('path');
+const { sequelize, TelegramUser, MessageLog, Image } = require('./models'); // Импортируем модели
 
 dotenv.config();
 
@@ -73,7 +75,60 @@ const removeKeyboard = {
     },
 };
 
-// Функция для создания задачи
+// Функция для сохранения изображения в базу данных
+const saveImageToDatabase = async (telegramId, fileName, filePath) => {
+    try {
+        const data = fs.readFileSync(filePath);
+
+        await Image.create({
+            telegramId,
+            fileName,
+            data,
+        });
+
+        fs.unlinkSync(filePath);
+    } catch (error) {
+        console.error('Error saving image to database:', error);
+        throw error;
+    }
+};
+
+// Функция для извлечения изображения из базы данных
+const getImageFromDatabase = async (telegramId, fileName) => {
+    try {
+        const image = await Image.findOne({
+            where: {
+                telegramId,
+                fileName,
+            },
+        });
+
+        if (image) {
+            return image.data; // Возвращаем бинарные данные изображения
+        } else {
+            throw new Error('Image not found');
+        }
+    } catch (error) {
+        console.error('Error retrieving image from database:', error);
+        throw error;
+    }
+};
+
+// Функция для удаления изображения из базы данных
+const deleteImageFromDatabase = async (telegramId, fileName) => {
+    try {
+        await Image.destroy({
+            where: {
+                telegramId,
+                fileName,
+            },
+        });
+    } catch (error) {
+        console.error('Error deleting image from database:', error);
+        throw error;
+    }
+};
+
 const createTask = async (summary, description, login, imageData) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
@@ -151,93 +206,56 @@ bot.on('message', async (msg) => {
                 await sendVerificationEmail(email, code);
                 states[chatId].email = email;
                 states[chatId].state = VERIFICATION;
-                bot.sendMessage(chatId, 'Код подтверждения отправлен на вашу почту. Пожалуйста, введите его для завершения регистрации. Если кода нет в основной папке почты, проверьте папку Спам.', removeKeyboard);
+                bot.sendMessage(chatId, 'Код подтверждения отправлен на вашу почту. Введите его здесь:', removeKeyboard);
             } catch (error) {
-                bot.sendMessage(chatId, 'Ошибка при отправке кода подтверждения. Пожалуйста, попробуйте снова позже.', replyKeyboard);
+                bot.sendMessage(chatId, 'Ошибка при отправке письма. Пожалуйста, попробуйте еще раз.', removeKeyboard);
             }
         }
     } else if (states[chatId] && states[chatId].state === VERIFICATION) {
-        const enteredCode = parseInt(text, 10);
-        if (emailVerificationCodes[chatId] && emailVerificationCodes[chatId] === enteredCode) {
-            const email = states[chatId].email;
-            await TelegramUser.create({ telegramId: chatId, email });
-            delete states[chatId];
-            bot.sendMessage(chatId, 'Почта успешно подтверждена. Выберите команду для продолжения:', replyKeyboard);
+        const code = parseInt(text, 10);
+        if (code === emailVerificationCodes[chatId]) {
+            delete emailVerificationCodes[chatId];
+            states[chatId].state = SUMMARY;
+            bot.sendMessage(chatId, 'Почта подтверждена. Введите краткое описание задачи:', removeKeyboard);
         } else {
-            bot.sendMessage(chatId, 'Неверный код подтверждения. Пожалуйста, попробуйте снова.', removeKeyboard);
-        }
-    } else if (text === '📝 Создать задачу') {
-        const user = await TelegramUser.findByPk(chatId);
-        if (!user) {
-            bot.sendMessage(chatId, 'Пожалуйста, введите вашу корпоративную почту для начала:', removeKeyboard);
-            states[chatId] = { state: EMAIL };
-        } else {
-            states[chatId] = { state: SUMMARY };
-            bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
+            bot.sendMessage(chatId, 'Неверный код. Пожалуйста, попробуйте снова.');
         }
     } else if (states[chatId] && states[chatId].state === SUMMARY) {
         states[chatId].summary = text;
         states[chatId].state = DESCRIPTION;
-        bot.sendMessage(chatId, 'Теперь введите описание задачи.', {
-            reply_markup: {
-                keyboard: [['🔙 Назад', '❌ Отмена']],
-                one_time_keyboard: true,
-                resize_keyboard: true,
-            },
-        });
+        bot.sendMessage(chatId, 'Введите подробное описание задачи:');
     } else if (states[chatId] && states[chatId].state === DESCRIPTION) {
         states[chatId].description = text;
         states[chatId].state = IMAGE;
-        bot.sendMessage(chatId, 'Хотите добавить изображение к задаче? Если нет, отправьте /skip.', {
-            reply_markup: {
-                keyboard: [['/skip', '❌ Отмена']],
-                one_time_keyboard: true,
-                resize_keyboard: true,
-            },
-        });
+        bot.sendMessage(chatId, 'Прикрепите изображение для задачи:');
     } else if (states[chatId] && states[chatId].state === IMAGE) {
         if (msg.photo) {
             const fileId = msg.photo[msg.photo.length - 1].file_id;
-            const filePath = await bot.getFileLink(fileId);
-            const response = await axios({ url: filePath, responseType: 'arraybuffer' });
-            const imageData = response.data;
-
-            await Image.create({
-                telegramId: chatId,
-                fileName: `${fileId}.jpg`,
-                data: imageData,
-            });
-
-            const { summary, description } = states[chatId];
-            const user = await TelegramUser.findByPk(chatId);
+            const file = await bot.getFile(fileId);
+            const filePath = file.file_path;
+            const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
+            const localFilePath = path.join(__dirname, 'uploads', file.file_id + '.jpg');
 
             try {
-                const task = await createTask(summary, description, user.email.split('@')[0], imageData);
-                bot.sendMessage(chatId, `Задача создана успешно: ${task.key}`, replyKeyboard);
+                const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+                fs.writeFileSync(localFilePath, response.data);
 
-                // Удаляем изображение из базы данных после использования
-                await Image.destroy({ where: { telegramId: chatId, fileName: `${fileId}.jpg` } });
-            } catch (error) {
-                bot.sendMessage(chatId, `Ошибка при создании задачи: ${error.message}`, replyKeyboard);
-            }
-            delete states[chatId];
-        } else if (text === '/skip') {
-            const { summary, description } = states[chatId];
-            const user = await TelegramUser.findByPk(chatId);
+                await saveImageToDatabase(chatId, file.file_id + '.jpg', localFilePath);
 
-            try {
-                const task = await createTask(summary, description, user.email.split('@')[0], null);
-                bot.sendMessage(chatId, `Задача создана успешно: ${task.key}`, replyKeyboard);
+                const { summary, description } = states[chatId];
+                await createTask(summary, description, states[chatId].email, response.data);
+
+                await deleteImageFromDatabase(chatId, file.file_id + '.jpg');
+                bot.sendMessage(chatId, 'Задача успешно создана!', replyKeyboard);
+                delete states[chatId];
             } catch (error) {
-                bot.sendMessage(chatId, `Ошибка при создании задачи: ${error.message}`, replyKeyboard);
+                console.error('Error handling image:', error);
+                bot.sendMessage(chatId, 'Ошибка при обработке изображения. Попробуйте снова.', replyKeyboard);
             }
-            delete states[chatId];
         } else {
-            bot.sendMessage(chatId, 'Пожалуйста, отправьте изображение или нажмите /skip, чтобы пропустить этот шаг.', removeKeyboard);
+            bot.sendMessage(chatId, 'Пожалуйста, отправьте изображение.');
         }
+    } else {
+        bot.sendMessage(chatId, 'Пожалуйста, выберите действие из меню или введите команду.');
     }
-});
-
-bot.on('polling_error', (error) => {
-    console.error('Polling error:', error);
 });

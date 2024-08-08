@@ -1,3 +1,4 @@
+// models/index.js
 const { Sequelize } = require('sequelize');
 const dotenv = require('dotenv');
 
@@ -13,7 +14,7 @@ const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, proces
 // Подключаем модели
 const TelegramUser = require('./telegramUser')(sequelize, Sequelize.DataTypes);
 const MessageLog = require('./messageLog')(sequelize, Sequelize.DataTypes);
-const Image = require('./image')(sequelize, Sequelize.DataTypes); // Подключаем модель для изображений
+const Image = require('./image')(sequelize, Sequelize.DataTypes);
 
 // Синхронизация моделей с базой данных
 sequelize.sync()
@@ -24,5 +25,5 @@ module.exports = {
     sequelize,
     TelegramUser,
     MessageLog,
-    Image, // Экспортируем модель для изображений
+    Image, // Экспортируем модель Image
 };
