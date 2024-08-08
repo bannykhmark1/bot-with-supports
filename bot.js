@@ -80,7 +80,7 @@ const removeKeyboard = {
 // Настройка хранения файлов
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const uploadDir = 'uploads/';
+        const uploadDir = path.join(__dirname, 'uploads'); // Используйте path.join для правильного создания путей
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
