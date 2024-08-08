@@ -2,11 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const nodemailer = require('nodemailer');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
-const FormData = require('form-data'); // Импортируем form-data
-const { sequelize, TelegramUser, MessageLog } = require('./models'); // Импортируем модели
+const { sequelize, TelegramUser, Image } = require('./models'); // Импортируем модели
 
 dotenv.config();
 
@@ -77,24 +73,8 @@ const removeKeyboard = {
     },
 };
 
-// Настройка хранения файлов
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = 'uploads/';
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir);
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({ storage: storage });
-
-const createTask = async (summary, description, login, imagePath) => {
+// Функция для создания задачи
+const createTask = async (summary, description, login, imageData) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
         'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
@@ -107,9 +87,8 @@ const createTask = async (summary, description, login, imagePath) => {
     formData.append('followers', login);
     formData.append('author', login);
 
-    if (imagePath) {
-        const file = fs.createReadStream(imagePath);
-        formData.append('attachments', file);
+    if (imageData) {
+        formData.append('attachments', imageData, { filename: 'image.jpg' });
     }
 
     try {
@@ -123,10 +102,6 @@ const createTask = async (summary, description, login, imagePath) => {
     } catch (error) {
         console.error('Error creating task:', error.response ? error.response.data : error.message);
         throw error;
-    } finally {
-        if (imagePath && fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath); // Удаляем файл после его отправки в трекер
-        }
     }
 };
 
@@ -221,39 +196,44 @@ bot.on('message', async (msg) => {
             },
         });
     } else if (states[chatId] && states[chatId].state === IMAGE) {
-        if (text === '/skip') {
+        if (msg.photo) {
+            const fileId = msg.photo[msg.photo.length - 1].file_id;
+            const filePath = await bot.getFileLink(fileId);
+            const response = await axios({ url: filePath, responseType: 'arraybuffer' });
+            const imageData = response.data;
+
+            await Image.create({
+                telegramId: chatId,
+                fileName: `${fileId}.jpg`,
+                data: imageData,
+            });
+
             const { summary, description } = states[chatId];
+            const user = await TelegramUser.findByPk(chatId);
+
             try {
-                await createTask(summary, description, (await TelegramUser.findByPk(chatId)).email);
-                bot.sendMessage(chatId, 'Задача успешно создана!', replyKeyboard);
+                const task = await createTask(summary, description, user.email.split('@')[0], imageData);
+                bot.sendMessage(chatId, `Задача создана успешно: ${task.key}`, replyKeyboard);
+
+                // Удаляем изображение из базы данных после использования
+                await Image.destroy({ where: { telegramId: chatId, fileName: `${fileId}.jpg` } });
             } catch (error) {
-                bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова.', replyKeyboard);
+                bot.sendMessage(chatId, `Ошибка при создании задачи: ${error.message}`, replyKeyboard);
+            }
+            delete states[chatId];
+        } else if (text === '/skip') {
+            const { summary, description } = states[chatId];
+            const user = await TelegramUser.findByPk(chatId);
+
+            try {
+                const task = await createTask(summary, description, user.email.split('@')[0], null);
+                bot.sendMessage(chatId, `Задача создана успешно: ${task.key}`, replyKeyboard);
+            } catch (error) {
+                bot.sendMessage(chatId, `Ошибка при создании задачи: ${error.message}`, replyKeyboard);
             }
             delete states[chatId];
         } else {
-            // Обработка получения изображения
-            bot.on('photo', async (msg) => {
-                const photo = msg.photo[msg.photo.length - 1];
-                const fileId = photo.file_id;
-                const filePath = await bot.getFileLink(fileId);
-
-                try {
-                    const response = await axios({
-                        url: filePath,
-                        responseType: 'stream',
-                    });
-                    const imagePath = path.join('uploads', fileId + '.jpg');
-                    response.data.pipe(fs.createWriteStream(imagePath));
-
-                    // После загрузки изображения
-                    const { summary, description } = states[chatId];
-                    await createTask(summary, description, (await TelegramUser.findByPk(chatId)).email, imagePath);
-                    bot.sendMessage(chatId, 'Задача успешно создана!', replyKeyboard);
-                    delete states[chatId];
-                } catch (error) {
-                    bot.sendMessage(chatId, 'Ошибка при загрузке изображения. Пожалуйста, попробуйте снова.', replyKeyboard);
-                }
-            });
+            bot.sendMessage(chatId, 'Пожалуйста, отправьте изображение или нажмите /skip, чтобы пропустить этот шаг.', removeKeyboard);
         }
     }
 });
