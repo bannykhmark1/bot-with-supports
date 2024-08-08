@@ -2,8 +2,10 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const nodemailer = require('nodemailer');
+const multer = require('multer'); // Импорт multer
 const fs = require('fs');
 const path = require('path');
+const FormData = require('form-data'); // Импорт FormData для создания данных формы
 const { sequelize, TelegramUser, MessageLog } = require('./models'); // Импортируем модели
 
 dotenv.config();
