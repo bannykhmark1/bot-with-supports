@@ -211,18 +211,24 @@ bot.on('message', async (msg) => {
         } else {
             states[chatId].description = text;
             states[chatId].state = IMAGE;
-            bot.sendMessage(chatId, 'Загрузите изображение или отправьте текст "Пропустить", если изображение не требуется.', removeKeyboard);
+            bot.sendMessage(chatId, 'Загрузите изображение или нажмите "Пропустить", если изображение не требуется.', {
+                reply_markup: {
+                    keyboard: [['Пропустить', '❌ Отмена']],
+                    one_time_keyboard: true,
+                    resize_keyboard: true,
+                },
+            });
         }
     } else if (states[chatId] && states[chatId].state === IMAGE) {
         if (msg.photo) {
-            const fileId = msg.photo[msg.photo.length - 1].file_id; // Получаем файл с максимальным разрешением
+            const fileId = msg.photo[msg.photo.length - 1].file_id;
             const filePath = await bot.downloadFile(fileId, './uploads');
             states[chatId].imagePath = filePath;
             await createTaskWithImage(chatId);
         } else if (text.toLowerCase() === 'пропустить') {
             await createTaskWithImage(chatId);
         } else {
-            bot.sendMessage(chatId, 'Пожалуйста, загрузите изображение или отправьте текст "Пропустить".');
+            bot.sendMessage(chatId, 'Пожалуйста, загрузите изображение или нажмите "Пропустить".');
         }
     }
 });
@@ -240,5 +246,8 @@ const createTaskWithImage = async (chatId) => {
         bot.sendMessage(chatId, `Ошибка создания задачи: ${error.message}`, replyKeyboard);
     }
 
+    if (imagePath) {
+        fs.unlinkSync(imagePath); // Удаляем файл после его отправки в трекер
+    }
     delete states[chatId];
 };
