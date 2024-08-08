@@ -10,10 +10,14 @@ const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, proces
     logging: false, // Отключить логирование SQL-запросов в консоли
 });
 
+// Подключаем модели
 const TelegramUser = require('./telegramUser')(sequelize, Sequelize.DataTypes);
 const MessageLog = require('./messageLog')(sequelize, Sequelize.DataTypes);
 
-sequelize.sync();
+// Синхронизация моделей с базой данных
+sequelize.sync()
+    .then(() => console.log('Database synchronized'))
+    .catch((err) => console.error('Failed to synchronize database:', err));
 
 module.exports = {
     sequelize,

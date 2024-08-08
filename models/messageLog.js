@@ -1,4 +1,3 @@
-// models/messageLog.js
 module.exports = (sequelize, DataTypes) => {
     const MessageLog = sequelize.define('MessageLog', {
         telegramId: {

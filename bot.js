@@ -5,7 +5,7 @@ const nodemailer = require('nodemailer');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const { Sequelize, TelegramUser, MessageLog } = require('./models');
+const { sequelize, TelegramUser, MessageLog } = require('./models'); // Импортируем модели
 
 dotenv.config();
 
@@ -149,7 +149,12 @@ bot.on('message', async (msg) => {
     console.log('Received message:', text);
     console.log('Current state:', states[chatId]);
 
-    await MessageLog.create({ telegramId: chatId, message: text });
+    // Проверка на наличие текста в сообщении
+    if (text) {
+        await MessageLog.create({ telegramId: chatId, message: text });
+    } else {
+        await MessageLog.create({ telegramId: chatId, message: 'No text in message' });
+    }
 
     if (text === '❌ Отмена') {
         delete states[chatId];
@@ -205,49 +210,63 @@ bot.on('message', async (msg) => {
             },
         });
     } else if (states[chatId] && states[chatId].state === DESCRIPTION) {
-        if (text === '🔙 Назад') {
-            states[chatId].state = SUMMARY;
-            bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
-        } else {
-            states[chatId].description = text;
-            states[chatId].state = IMAGE;
-            bot.sendMessage(chatId, 'Загрузите изображение или нажмите "Пропустить", если изображение не требуется.', {
-                reply_markup: {
-                    keyboard: [['Пропустить', '❌ Отмена']],
-                    one_time_keyboard: true,
-                    resize_keyboard: true,
-                },
-            });
-        }
+        states[chatId].description = text;
+        states[chatId].state = IMAGE;
+        bot.sendMessage(chatId, 'Хотите добавить изображение к задаче? Если нет, отправьте /skip.', {
+            reply_markup: {
+                keyboard: [['/skip', '❌ Отмена']],
+                one_time_keyboard: true,
+                resize_keyboard: true,
+            },
+        });
     } else if (states[chatId] && states[chatId].state === IMAGE) {
         if (msg.photo) {
             const fileId = msg.photo[msg.photo.length - 1].file_id;
-            const filePath = await bot.downloadFile(fileId, './uploads');
-            states[chatId].imagePath = filePath;
-            await createTaskWithImage(chatId);
-        } else if (text.toLowerCase() === 'пропустить') {
-            await createTaskWithImage(chatId);
+            const filePath = await bot.getFileLink(fileId);
+            const imagePath = `./uploads/${fileId}.jpg`;
+
+            const writer = fs.createWriteStream(imagePath);
+            const response = await axios({
+                url: filePath,
+                method: 'GET',
+                responseType: 'stream',
+            });
+            response.data.pipe(writer);
+
+            writer.on('finish', async () => {
+                const { summary, description } = states[chatId];
+                const user = await TelegramUser.findByPk(chatId);
+
+                try {
+                    const task = await createTask(summary, description, user.email.split('@')[0], imagePath);
+                    bot.sendMessage(chatId, `Задача создана успешно: ${task.key}`, replyKeyboard);
+                } catch (error) {
+                    bot.sendMessage(chatId, `Ошибка при создании задачи: ${error.message}`, replyKeyboard);
+                }
+                delete states[chatId];
+            });
+            writer.on('error', (err) => {
+                console.error('Error writing file:', err);
+                bot.sendMessage(chatId, 'Ошибка при сохранении изображения.', replyKeyboard);
+                delete states[chatId];
+            });
+        } else if (text === '/skip') {
+            const { summary, description } = states[chatId];
+            const user = await TelegramUser.findByPk(chatId);
+
+            try {
+                const task = await createTask(summary, description, user.email.split('@')[0], null);
+                bot.sendMessage(chatId, `Задача создана успешно: ${task.key}`, replyKeyboard);
+            } catch (error) {
+                bot.sendMessage(chatId, `Ошибка при создании задачи: ${error.message}`, replyKeyboard);
+            }
+            delete states[chatId];
         } else {
-            bot.sendMessage(chatId, 'Пожалуйста, загрузите изображение или нажмите "Пропустить".');
+            bot.sendMessage(chatId, 'Пожалуйста, отправьте изображение или нажмите /skip, чтобы пропустить этот шаг.', removeKeyboard);
         }
     }
 });
 
-const createTaskWithImage = async (chatId) => {
-    const user = await TelegramUser.findByPk(chatId);
-    const { summary, description, imagePath } = states[chatId];
-    const login = user.email.split('@')[0];
-    const fullDescription = `${description}\n\nКорпоративная почта: ${user.email}`;
-
-    try {
-        const task = await createTask(summary, fullDescription, login, imagePath);
-        bot.sendMessage(chatId, `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}.`, replyKeyboard);
-    } catch (error) {
-        bot.sendMessage(chatId, `Ошибка создания задачи: ${error.message}`, replyKeyboard);
-    }
-
-    if (imagePath) {
-        fs.unlinkSync(imagePath); // Удаляем файл после его отправки в трекер
-    }
-    delete states[chatId];
-};
+bot.on('polling_error', (error) => {
+    console.error('Polling error:', error);
+});
