@@ -5,8 +5,8 @@ const nodemailer = require('nodemailer');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const FormData = require('form-data'); // Импортируем form-data
-const { sequelize, TelegramUser, MessageLog } = require('./models'); // Импортируем модели
+const FormData = require('form-data');
+const { sequelize, TelegramUser, MessageLog, Image } = require('./models'); // Импортируем модели
 
 dotenv.config();
 
@@ -94,7 +94,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-const createTask = async (summary, description, login, imagePath) => {
+const createTask = async (summary, description, login, imageFileName) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
         'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
@@ -107,7 +107,8 @@ const createTask = async (summary, description, login, imagePath) => {
     formData.append('followers', login);
     formData.append('author', login);
 
-    if (imagePath) {
+    if (imageFileName) {
+        const imagePath = path.join(__dirname, 'uploads', imageFileName);
         const file = fs.createReadStream(imagePath);
         formData.append('attachments', file);
     }
@@ -124,8 +125,11 @@ const createTask = async (summary, description, login, imagePath) => {
         console.error('Error creating task:', error.response ? error.response.data : error.message);
         throw error;
     } finally {
-        if (imagePath && fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath); // Удаляем файл после его отправки в трекер
+        if (imageFileName) {
+            const imagePath = path.join(__dirname, 'uploads', imageFileName);
+            if (fs.existsSync(imagePath)) {
+                fs.unlinkSync(imagePath); // Удаляем файл после его отправки в трекер
+            }
         }
     }
 };
@@ -240,18 +244,28 @@ bot.on('message', async (msg) => {
                 try {
                     const response = await axios({
                         url: filePath,
-                        responseType: 'stream',
+                        responseType: 'arraybuffer',
                     });
-                    const imagePath = path.join('uploads', fileId + '.jpg');
-                    response.data.pipe(fs.createWriteStream(imagePath));
+                    const imageData = Buffer.from(response.data, 'binary');
 
-                    // После загрузки изображения
+                    // Сохраняем изображение в базу данных
+                    const imageRecord = await Image.create({
+                        telegramId: chatId,
+                        fileName: fileId + '.jpg',
+                        data: imageData,
+                    });
+
+                    states[chatId].imageId = imageRecord.id;
+
+                    bot.sendMessage(chatId, 'Изображение успешно сохранено. Теперь создаем задачу...', removeKeyboard);
+
+                    // Переходим к созданию задачи
                     const { summary, description } = states[chatId];
-                    await createTask(summary, description, (await TelegramUser.findByPk(chatId)).email, imagePath);
+                    await createTask(summary, description, (await TelegramUser.findByPk(chatId)).email, imageRecord.fileName);
                     bot.sendMessage(chatId, 'Задача успешно создана!', replyKeyboard);
                     delete states[chatId];
                 } catch (error) {
-                    bot.sendMessage(chatId, 'Ошибка при загрузке изображения. Пожалуйста, попробуйте снова.', replyKeyboard);
+                    bot.sendMessage(chatId, 'Ошибка при сохранении изображения. Пожалуйста, попробуйте снова.', replyKeyboard);
                 }
             });
         }
