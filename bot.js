@@ -2,11 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const nodemailer = require('nodemailer');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
-const FormData = require('form-data');
-const { sequelize, TelegramUser, MessageLog, Image } = require('./models'); // Импортируем модели
+const { Sequelize, TelegramUser, MessageLog } = require('./models');
 
 dotenv.config();
 
@@ -23,7 +19,6 @@ const SUMMARY = 'SUMMARY';
 const DESCRIPTION = 'DESCRIPTION';
 const EMAIL = 'EMAIL';
 const VERIFICATION = 'VERIFICATION';
-const IMAGE = 'IMAGE';
 
 const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it'];
 const emailVerificationCodes = {};
@@ -77,60 +72,27 @@ const removeKeyboard = {
     },
 };
 
-// Настройка хранения файлов
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = 'uploads/';
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir);
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({ storage: storage });
-
-const createTask = async (summary, description, login, imageFileName) => {
+const createTask = async (summary, description, login) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
         'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
+        'Content-Type': 'application/json',
     };
 
-    const formData = new FormData();
-    formData.append('summary', summary);
-    formData.append('description', description);
-    formData.append('queue', YANDEX_TRACKER_QUEUE);
-    formData.append('followers', login);
-    formData.append('author', login);
-
-    if (imageFileName) {
-        const imagePath = path.join(__dirname, 'uploads', imageFileName);
-        const file = fs.createReadStream(imagePath);
-        formData.append('attachments', file);
-    }
+    const data = {
+        summary,
+        description,
+        queue: YANDEX_TRACKER_QUEUE,
+        followers: [login],
+        author: login,
+    };
 
     try {
-        const response = await axios.post(YANDEX_TRACKER_URL, formData, {
-            headers: {
-                ...headers,
-                ...formData.getHeaders(),
-            },
-        });
+        const response = await axios.post(YANDEX_TRACKER_URL, data, { headers });
         return response.data;
     } catch (error) {
         console.error('Error creating task:', error.response ? error.response.data : error.message);
         throw error;
-    } finally {
-        if (imageFileName) {
-            const imagePath = path.join(__dirname, 'uploads', imageFileName);
-            if (fs.existsSync(imagePath)) {
-                fs.unlinkSync(imagePath); // Удаляем файл после его отправки в трекер
-            }
-        }
     }
 };
 
@@ -154,12 +116,7 @@ bot.on('message', async (msg) => {
     console.log('Received message:', text);
     console.log('Current state:', states[chatId]);
 
-    // Проверка на наличие текста в сообщении
-    if (text) {
-        await MessageLog.create({ telegramId: chatId, message: text });
-    } else {
-        await MessageLog.create({ telegramId: chatId, message: 'No text in message' });
-    }
+    await MessageLog.create({ telegramId: chatId, message: text });
 
     if (text === '❌ Отмена') {
         delete states[chatId];
@@ -215,63 +172,23 @@ bot.on('message', async (msg) => {
             },
         });
     } else if (states[chatId] && states[chatId].state === DESCRIPTION) {
-        states[chatId].description = text;
-        states[chatId].state = IMAGE;
-        bot.sendMessage(chatId, 'Хотите добавить изображение к задаче? Если нет, отправьте /skip.', {
-            reply_markup: {
-                keyboard: [['/skip', '❌ Отмена']],
-                one_time_keyboard: true,
-                resize_keyboard: true,
-            },
-        });
-    } else if (states[chatId] && states[chatId].state === IMAGE) {
-        if (text === '/skip') {
-            const { summary, description } = states[chatId];
-            try {
-                await createTask(summary, description, (await TelegramUser.findByPk(chatId)).email);
-                bot.sendMessage(chatId, 'Задача успешно создана!', replyKeyboard);
-            } catch (error) {
-                bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова.', replyKeyboard);
-            }
-            delete states[chatId];
+        if (text === '🔙 Назад') {
+            states[chatId].state = SUMMARY;
+            bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
         } else {
-            // Обработка получения изображения
-            bot.on('photo', async (msg) => {
-                const photo = msg.photo[msg.photo.length - 1];
-                const fileId = photo.file_id;
-                const filePath = await bot.getFileLink(fileId);
+            const user = await TelegramUser.findByPk(chatId);
+            const { summary } = states[chatId];
+            const description = `${text}\n\nКорпоративная почта: ${user.email}`;
+            const login = user.email.split('@')[0];
 
-                try {
-                    const response = await axios({
-                        url: filePath,
-                        responseType: 'arraybuffer',
-                    });
-                    const imageData = Buffer.from(response.data, 'binary');
+            try {
+                const task = await createTask(summary, description, login);
+                bot.sendMessage(chatId, `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`, replyKeyboard);
+            } catch (error) {
+                bot.sendMessage(chatId, `Ошибка создания задачи: ${error.message}`, replyKeyboard);
+            }
 
-                    // Сохраняем изображение в базу данных
-                    const imageRecord = await Image.create({
-                        telegramId: chatId,
-                        fileName: fileId + '.jpg',
-                        data: imageData,
-                    });
-
-                    states[chatId].imageId = imageRecord.id;
-
-                    bot.sendMessage(chatId, 'Изображение успешно сохранено. Теперь создаем задачу...', removeKeyboard);
-
-                    // Переходим к созданию задачи
-                    const { summary, description } = states[chatId];
-                    await createTask(summary, description, (await TelegramUser.findByPk(chatId)).email, imageRecord.fileName);
-                    bot.sendMessage(chatId, 'Задача успешно создана!', replyKeyboard);
-                    delete states[chatId];
-                } catch (error) {
-                    bot.sendMessage(chatId, 'Ошибка при сохранении изображения. Пожалуйста, попробуйте снова.', replyKeyboard);
-                }
-            });
+            delete states[chatId];
         }
     }
-});
-
-bot.on('polling_error', (error) => {
-    console.error('Polling error:', error);
 });
