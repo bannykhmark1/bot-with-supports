@@ -111,12 +111,19 @@ bot.onText(/\/start/, async (msg) => {
 
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
-    const text = msg.text;
+    const text = msg.text || ''; // Убедитесь, что text не undefined
 
     console.log('Received message:', text);
     console.log('Current state:', states[chatId]);
 
-    await MessageLog.create({ telegramId: chatId, message: text });
+    // Записываем только если message не пустое
+    if (text) {
+        try {
+            await MessageLog.create({ telegramId: chatId, message: text });
+        } catch (error) {
+            console.error('Error logging message:', error);
+        }
+    }
 
     if (text === '❌ Отмена') {
         delete states[chatId];
@@ -203,10 +210,15 @@ bot.on('photo', async (msg) => {
 
 bot.on('document', async (msg) => {
     const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Вы прислали файл. Бот не поддерживает работу с файлами. Пожалуйста, отправляйте текстовые сообщения.');
+    bot.sendMessage(chatId, 'Вы прислали документ. Бот не поддерживает работу с документами. Пожалуйста, отправляйте текстовые сообщения.');
 });
 
-bot.on('video', async (msg) => {
+bot.on('audio', async (msg) => {
     const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Вы прислали видео. Бот не поддерживает работу с видео. Пожалуйста, отправляйте текстовые сообщения.');
+    bot.sendMessage(chatId, 'Вы прислали аудио. Бот не поддерживает работу с аудиофайлами. Пожалуйста, отправляйте текстовые сообщения.');
+});
+
+bot.on('voice', async (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 'Вы прислали голосовое сообщение. Бот не поддерживает работу с голосовыми сообщениями. Пожалуйста, отправляйте текстовые сообщения.');
 });
