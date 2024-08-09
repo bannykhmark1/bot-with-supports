@@ -170,19 +170,25 @@ bot.on('message', async (msg) => {
             bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
         }
     } else if (currentState === SUMMARY) {
-        states[chatId].summary = text;
-        states[chatId].state = DESCRIPTION;
-        bot.sendMessage(chatId, 'Теперь введите описание задачи.', {
-            reply_markup: {
-                keyboard: [['🔙 Назад', '❌ Отмена']],
-                one_time_keyboard: true,
-                resize_keyboard: true,
-            },
-        });
+        if (text.trim() === '') {
+            bot.sendMessage(chatId, 'Название задачи не может быть пустым. Пожалуйста, введите название задачи.', removeKeyboard);
+        } else {
+            states[chatId].summary = text;
+            states[chatId].state = DESCRIPTION;
+            bot.sendMessage(chatId, 'Теперь введите описание задачи.', {
+                reply_markup: {
+                    keyboard: [['🔙 Назад', '❌ Отмена']],
+                    one_time_keyboard: true,
+                    resize_keyboard: true,
+                },
+            });
+        }
     } else if (currentState === DESCRIPTION) {
         if (text === '🔙 Назад') {
             states[chatId].state = SUMMARY;
             bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
+        } else if (text.trim() === '') {
+            bot.sendMessage(chatId, 'Описание задачи не может быть пустым. Пожалуйста, введите описание задачи.', removeKeyboard);
         } else {
             const user = await TelegramUser.findByPk(chatId);
             const { summary } = states[chatId];
@@ -198,8 +204,6 @@ bot.on('message', async (msg) => {
 
             delete states[chatId];
         }
-    } else {
-        bot.sendMessage(chatId, 'Бот не распознает это сообщение. Пожалуйста, отправляйте текстовые сообщения.');
     }
 });
 
