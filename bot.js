@@ -190,5 +190,23 @@ bot.on('message', async (msg) => {
 
             delete states[chatId];
         }
+    } else {
+        bot.sendMessage(chatId, 'Бот не поддерживает данный формат сообщения. Пожалуйста, отправляйте текстовые сообщения или используйте предложенные команды.');
     }
+});
+
+// Обработка файлов и медиа
+bot.on('photo', async (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 'Вы прислали фото. Бот не поддерживает работу с изображениями. Пожалуйста, отправляйте текстовые сообщения.');
+});
+
+bot.on('document', async (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 'Вы прислали файл. Бот не поддерживает работу с файлами. Пожалуйста, отправляйте текстовые сообщения.');
+});
+
+bot.on('video', async (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 'Вы прислали видео. Бот не поддерживает работу с видео. Пожалуйста, отправляйте текстовые сообщения.');
 });
