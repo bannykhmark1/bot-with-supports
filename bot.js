@@ -116,12 +116,13 @@ bot.on('message', async (msg) => {
     console.log('Received message:', text);
     console.log('Current state:', states[chatId]);
 
-    if (text) {
-        try {
+    // Логируем все сообщения в базу данных
+    try {
+        if (text) {
             await MessageLog.create({ telegramId: chatId, message: text });
-        } catch (error) {
-            console.error('Error logging message:', error);
         }
+    } catch (error) {
+        console.error('Error logging message:', error);
     }
 
     const currentState = states[chatId] ? states[chatId].state : null;
