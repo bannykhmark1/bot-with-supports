@@ -111,12 +111,11 @@ bot.onText(/\/start/, async (msg) => {
 
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
-    const text = msg.text || ''; // Убедитесь, что text не undefined
+    const text = msg.text || '';
 
     console.log('Received message:', text);
     console.log('Current state:', states[chatId]);
 
-    // Записываем только если message не пустое
     if (text) {
         try {
             await MessageLog.create({ telegramId: chatId, message: text });
@@ -125,10 +124,12 @@ bot.on('message', async (msg) => {
         }
     }
 
+    const currentState = states[chatId] ? states[chatId].state : null;
+
     if (text === '❌ Отмена') {
         delete states[chatId];
         bot.sendMessage(chatId, 'Действие отменено.', replyKeyboard);
-    } else if (states[chatId] && states[chatId].state === EMAIL) {
+    } else if (currentState === EMAIL) {
         const email = text;
         const emailParts = email.split('@');
         const domain = emailParts[1] ? emailParts[1].split('.')[0] : '';
@@ -142,16 +143,15 @@ bot.on('message', async (msg) => {
 
             try {
                 await sendVerificationEmail(email, code);
-                states[chatId].email = email;
-                states[chatId].state = VERIFICATION;
+                states[chatId] = { state: VERIFICATION, email };
                 bot.sendMessage(chatId, 'Код подтверждения отправлен на вашу почту. Пожалуйста, введите его для завершения регистрации. Если кода нет в основной папке почты, проверьте папку Спам.', removeKeyboard);
             } catch (error) {
                 bot.sendMessage(chatId, 'Ошибка при отправке кода подтверждения. Пожалуйста, попробуйте снова позже.', replyKeyboard);
             }
         }
-    } else if (states[chatId] && states[chatId].state === VERIFICATION) {
+    } else if (currentState === VERIFICATION) {
         const enteredCode = parseInt(text, 10);
-        if (emailVerificationCodes[chatId] && emailVerificationCodes[chatId] === enteredCode) {
+        if (emailVerificationCodes[chatId] === enteredCode) {
             const email = states[chatId].email;
             await TelegramUser.create({ telegramId: chatId, email });
             delete states[chatId];
@@ -168,7 +168,7 @@ bot.on('message', async (msg) => {
             states[chatId] = { state: SUMMARY };
             bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
         }
-    } else if (states[chatId] && states[chatId].state === SUMMARY) {
+    } else if (currentState === SUMMARY) {
         states[chatId].summary = text;
         states[chatId].state = DESCRIPTION;
         bot.sendMessage(chatId, 'Теперь введите описание задачи.', {
@@ -178,7 +178,7 @@ bot.on('message', async (msg) => {
                 resize_keyboard: true,
             },
         });
-    } else if (states[chatId] && states[chatId].state === DESCRIPTION) {
+    } else if (currentState === DESCRIPTION) {
         if (text === '🔙 Назад') {
             states[chatId].state = SUMMARY;
             bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', removeKeyboard);
@@ -198,14 +198,13 @@ bot.on('message', async (msg) => {
             delete states[chatId];
         }
     } else {
-        bot.sendMessage(chatId, 'Бот не поддерживает данный формат сообщения. Пожалуйста, отправляйте текстовые сообщения или используйте предложенные команды.');
+        bot.sendMessage(chatId, 'Бот не распознает это сообщение. Пожалуйста, отправляйте текстовые сообщения.');
     }
 });
 
-// Обработка файлов и медиа
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Вы прислали фото. Бот не поддерживает работу с изображениями. Пожалуйста, отправляйте текстовые сообщения.');
+    bot.sendMessage(chatId, 'Вы прислали фото. Бот не поддерживает работу с фото. Пожалуйста, отправляйте текстовые сообщения.');
 });
 
 bot.on('document', async (msg) => {
