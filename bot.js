@@ -206,7 +206,7 @@ bot.on('message', async (msg) => {
         } else {
             states[chatId].description = text;
             states[chatId].state = BUSINESS_UNIT;
-            bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу для задачи:', businessUnitsKeyboard);
+            bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу к которой вы относитесь:', businessUnitsKeyboard);
         }
     } else if (currentState === BUSINESS_UNIT) {
         const businessUnit = text.trim();
