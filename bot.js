@@ -19,6 +19,7 @@ const SUMMARY = 'SUMMARY';
 const DESCRIPTION = 'DESCRIPTION';
 const EMAIL = 'EMAIL';
 const VERIFICATION = 'VERIFICATION';
+const BUSINESS_UNIT = 'BUSINESS_UNIT';
 
 const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it'];
 const emailVerificationCodes = {};
@@ -72,6 +73,18 @@ const removeKeyboard = {
     },
 };
 
+const businessUnitsKeyboard = {
+    reply_markup: {
+        keyboard: [
+            ['Переработка КМК', 'Консервация КМК'],
+            ['РПФ', 'СКХП', 'КСК'],
+            ['Розница', 'Pervafood', 'Хлебокомбинат №1', 'УАГ']
+        ],
+        one_time_keyboard: true,
+        resize_keyboard: true,
+    },
+};
+
 const createTask = async (summary, description, login) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
@@ -84,8 +97,8 @@ const createTask = async (summary, description, login) => {
         description,
         queue: YANDEX_TRACKER_QUEUE,
         followers: [login],
-        priority: 'low',
         author: login,
+        priority: 'low' // Низкий приоритет задачи
     };
 
     try {
@@ -191,39 +204,31 @@ bot.on('message', async (msg) => {
         } else if (text.trim() === '') {
             bot.sendMessage(chatId, 'Описание задачи не может быть пустым. Пожалуйста, введите описание задачи.', removeKeyboard);
         } else {
+            states[chatId].description = text;
+            states[chatId].state = BUSINESS_UNIT;
+            bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу для задачи:', businessUnitsKeyboard);
+        }
+    } else if (currentState === BUSINESS_UNIT) {
+        const businessUnit = text.trim();
+        const validBusinessUnits = ['Переработка КМК', 'Консервация КМК', 'РПФ', 'СКХП', 'КСК', 'Розница', 'Pervafood', 'Хлебокомбинат №1', 'УАГ'];
+        if (!validBusinessUnits.includes(businessUnit)) {
+            bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу из предложенного списка.', businessUnitsKeyboard);
+        } else {
+            const summary = `[${businessUnit}] ${states[chatId].summary}`;
+            const description = states[chatId].description;
             const user = await TelegramUser.findByPk(chatId);
-            const { summary } = states[chatId];
-            const description = `${text}\n\nКорпоративная почта: ${user.email}`;
             const login = user.email.split('@')[0];
-
+            
             try {
                 const task = await createTask(summary, description, login);
-                bot.sendMessage(chatId, `Задача создана: ${task.key || 'Нет ключа'} - https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`, replyKeyboard);
+                bot.sendMessage(chatId, `Задача успешно создана с идентификатором: ${task.key}`, replyKeyboard);
             } catch (error) {
-                bot.sendMessage(chatId, `Ошибка создания задачи: ${error.message}`, replyKeyboard);
+                bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова.', replyKeyboard);
             }
 
             delete states[chatId];
         }
+    } else {
+        bot.sendMessage(chatId, 'Я вас не понимаю. Пожалуйста, выберите команду из меню.', replyKeyboard);
     }
-});
-
-bot.on('photo', async (msg) => {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Вы прислали фото. Бот не поддерживает работу с фото. Пожалуйста, отправляйте текстовые сообщения.');
-});
-
-bot.on('document', async (msg) => {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Вы прислали документ. Бот не поддерживает работу с документами. Пожалуйста, отправляйте текстовые сообщения.');
-});
-
-bot.on('audio', async (msg) => {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Вы прислали аудио. Бот не поддерживает работу с аудиофайлами. Пожалуйста, отправляйте текстовые сообщения.');
-});
-
-bot.on('voice', async (msg) => {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Вы прислали голосовое сообщение. Бот не поддерживает работу с голосовыми сообщениями. Пожалуйста, отправляйте текстовые сообщения.');
 });
