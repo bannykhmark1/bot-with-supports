@@ -221,7 +221,7 @@ bot.on('message', async (msg) => {
             
             try {
                 const task = await createTask(summary, description, login);
-                bot.sendMessage(chatId, `Задача успешно создана с идентификатором: ${task.key}`, replyKeyboard);
+                bot.sendMessage(chatId, `Задача успешно создана с идентификатором: ${task.key}: https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`, replyKeyboard);
             } catch (error) {
                 bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова.', replyKeyboard);
             }
