@@ -231,31 +231,67 @@ bot.on('message', async (msg) => {
             });
         }
     } else if (currentState === SUMMARY) {
-        states[chatId].summary = text;
-        states[chatId].state = DESCRIPTION;
-        bot.sendMessage(chatId, 'Введите описание задачи.', {
-            reply_markup: {
-                remove_keyboard: true,
-                keyboard: [['🔓 Выйти из аккаунта']],
-            }
-        });
-    } else if (currentState === DESCRIPTION) {
-        states[chatId].description = text;
-        states[chatId].state = BUSINESS_UNIT;
-        bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу.', businessUnitsKeyboard);
-    } else if (currentState === BUSINESS_UNIT) {
-        states[chatId].businessUnit = text;
-
-        const { summary, description } = states[chatId];
-        const user = await TelegramUser.findByPk(chatId);
-        const login = user.email.split('@')[0];
-
-        try {
-            const taskData = await createTask(summary, description, login);
-            bot.sendMessage(chatId, `Задача успешно создана! ID задачи: ${taskData.key}`, replyKeyboard);
-        } catch (error) {
-            bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова позже.', replyKeyboard);
+        if (text.trim() === '') {
+            bot.sendMessage(chatId, 'Название задачи не может быть пустым. Пожалуйста, введите название задачи.', {
+                reply_markup: {
+                    remove_keyboard: true,
+                    keyboard: [['🔓 Выйти из аккаунта']],
+                }
+            });
+        } else {
+            states[chatId].summary = text;
+            states[chatId].state = DESCRIPTION;
+            bot.sendMessage(chatId, 'Теперь введите описание задачи.', {
+                reply_markup: {
+                    keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
+                    one_time_keyboard: true,
+                    resize_keyboard: true,
+                },
+            });
         }
-        delete states[chatId];
+    } else if (currentState === DESCRIPTION) {
+        if (text === '🔙 Назад') {
+            states[chatId].state = SUMMARY;
+            bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', {
+                reply_markup: {
+                    remove_keyboard: true,
+                    keyboard: [['🔓 Выйти из аккаунта']],
+                }
+            });
+        } else if (text.trim() === '') {
+            bot.sendMessage(chatId, 'Описание задачи не может быть пустым. Пожалуйста, введите описание задачи.', {
+                reply_markup: {
+                    remove_keyboard: true,
+                    keyboard: [['🔓 Выйти из аккаунта']],
+                }
+            });
+        } else {
+            states[chatId].description = text;
+            states[chatId].state = BUSINESS_UNIT;
+            bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу к которой вы относитесь:', businessUnitsKeyboard);
+        }
+    } else if (currentState === BUSINESS_UNIT) {
+        const businessUnit = text.trim();
+        const validBusinessUnits = ['Переработка КМК', 'Консервация КМК', 'РПФ', 'СКХП', 'КСК', 'Розница', 'Pervafood', 'Хлебокомбинат №1', 'УАГ'];
+        if (!validBusinessUnits.includes(businessUnit)) {
+            bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу из предложенного списка.', businessUnitsKeyboard);
+        } else {
+            const summary = `[${businessUnit}] ${states[chatId].summary}`;
+            const description = states[chatId].description;
+            const user = await TelegramUser.findByPk(chatId);
+            const login = user.email.split('@')[0];
+            
+            try {
+                const task = await createTask(summary, description, login);
+                bot.sendMessage(chatId, `Задача успешно создана с идентификатором: ${task.key}: https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`, replyKeyboard);
+            } catch (error) {
+                bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова.', replyKeyboard);
+            }
+
+            delete states[chatId];
+        }
+    } else {
+        bot.sendMessage(chatId, 'Я вас не понимаю. Пожалуйста, выберите команду из меню.', replyKeyboard);
     }
 });
+
