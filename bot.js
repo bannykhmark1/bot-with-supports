@@ -80,11 +80,13 @@ const businessUnitsKeyboard = {
     },
 };
 
+// Функция для смены состояния и отправки сообщения пользователю
 const handleStateTransition = (chatId, newState, message, keyboard = null) => {
-    states[chatId] = { state: newState };
+    states[chatId] = { ...states[chatId], state: newState }; // Обновляем состояние, но сохраняем остальные данные
     bot.sendMessage(chatId, message, keyboard || { reply_markup: { remove_keyboard: true } });
 };
 
+// Функция для создания задачи в Яндекс Трекере
 const createTask = async (summary, description, login) => {
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
@@ -110,7 +112,6 @@ const createTask = async (summary, description, login) => {
         throw error;
     }
 };
-
 
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
@@ -163,6 +164,7 @@ bot.on('message', async (msg) => {
         } else {
             const code = Math.floor(100000 + Math.random() * 900000);
             emailVerificationCodes[chatId] = code;
+            states[chatId] = { ...states[chatId], email }; // Сохраняем email
 
             try {
                 await sendVerificationEmail(email, code);
@@ -189,7 +191,7 @@ bot.on('message', async (msg) => {
         }
     } else if (currentState === SUMMARY) {
         if (text.trim()) {
-            states[chatId].summary = text;
+            states[chatId].summary = text.trim(); // Сохраняем summary
             handleStateTransition(chatId, DESCRIPTION, 'Теперь введите описание задачи.');
         } else {
             bot.sendMessage(chatId, 'Название задачи не может быть пустым. Пожалуйста, введите название задачи.');
@@ -198,7 +200,7 @@ bot.on('message', async (msg) => {
         if (text === '🔙 Назад') {
             handleStateTransition(chatId, SUMMARY, 'Пожалуйста, введите название задачи.');
         } else if (text.trim()) {
-            states[chatId].description = text;
+            states[chatId].description = text.trim(); // Сохраняем description
             handleStateTransition(chatId, BUSINESS_UNIT, 'Пожалуйста, выберите бизнес-единицу.', businessUnitsKeyboard);
         } else {
             bot.sendMessage(chatId, 'Описание задачи не может быть пустым. Пожалуйста, введите описание задачи.');
@@ -207,15 +209,15 @@ bot.on('message', async (msg) => {
         const user = await TelegramUser.findByPk(chatId);
         const summary = states[chatId]?.summary;
         const description = states[chatId]?.description ? `${states[chatId].description}\nБизнес-единица: ${text}` : null;
-    
+
         console.log('Summary:', summary); // Логируем значение summary
         console.log('Description:', description); // Логируем значение description
-    
+
         if (!summary || !description) {
             bot.sendMessage(chatId, 'Ошибка: Необходимо заполнить все поля перед созданием задачи.');
             return;
         }
-    
+
         try {
             const task = await createTask(summary, description, user.email);
             delete states[chatId];
@@ -224,7 +226,4 @@ bot.on('message', async (msg) => {
             bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова позже.', replyKeyboard);
         }
     }
-    
-    
 });
-
