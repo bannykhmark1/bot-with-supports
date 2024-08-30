@@ -206,8 +206,16 @@ bot.on('message', async (msg) => {
     } else if (currentState === BUSINESS_UNIT) {
         const user = await TelegramUser.findByPk(chatId);
         if (user) {
+            const summary = states[chatId].summary;
+            const description = `${states[chatId].description}\nБизнес-единица: ${text}`;
+    
+            if (!summary || !description) {
+                bot.sendMessage(chatId, 'Ошибка: Необходимо заполнить все поля перед созданием задачи.');
+                return;
+            }
+    
             try {
-                const task = await createTask(states[chatId].summary, `${states[chatId].description}\nБизнес-единица: ${text}`, user.email);
+                const task = await createTask(summary, description, user.email);
                 delete states[chatId];
                 bot.sendMessage(chatId, `Задача успешно создана: ${task.self}`, replyKeyboard);
             } catch (error) {
@@ -217,5 +225,6 @@ bot.on('message', async (msg) => {
             handleStateTransition(chatId, EMAIL, 'Пожалуйста, введите вашу корпоративную почту для начала:');
         }
     }
+    
 });
 
