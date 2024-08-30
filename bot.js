@@ -100,6 +100,8 @@ const createTask = async (summary, description, login) => {
         author: login,
     };
 
+    console.log('Creating task with data:', data); // Логирование данных запроса
+
     try {
         const response = await axios.post(YANDEX_TRACKER_URL, data, { headers });
         return response.data;
@@ -108,6 +110,7 @@ const createTask = async (summary, description, login) => {
         throw error;
     }
 };
+
 
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
@@ -215,3 +218,4 @@ bot.on('message', async (msg) => {
         }
     }
 });
+
