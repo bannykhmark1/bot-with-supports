@@ -87,7 +87,8 @@ const handleStateTransition = (chatId, newState, message, keyboard = null) => {
 };
 
 // Функция для создания задачи в Яндекс Трекере
-const createTask = async (summary, description, login) => {
+const createTask = async (summary, description, email) => {
+    const login = email.split('@')[0]; // Извлекаем логин из email
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
         'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
