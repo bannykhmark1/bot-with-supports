@@ -86,9 +86,35 @@ const handleStateTransition = (chatId, newState, message, keyboard = null) => {
     bot.sendMessage(chatId, message, keyboard || { reply_markup: { remove_keyboard: true } });
 };
 
+const getUserIdByEmail = async (email) => {
+    const headers = {
+        'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
+        'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
+        'Content-Type': 'application/json',
+    };
+
+    try {
+        // Запросите пользователей, чтобы найти нужный email
+        const response = await axios.get(`${YANDEX_TRACKER_URL}/users`, { headers });
+        const users = response.data.users;
+        const user = users.find(user => user.email === email);
+        return user ? user.id : null;
+    } catch (error) {
+        console.error('Error fetching users:', error.response ? error.response.data : error.message);
+        throw error;
+    }
+};
+
+
 // Функция для создания задачи в Яндекс Трекере
-const createTask = async (summary, description, login) => {
-    
+const createTask = async (summary, description, email) => {
+
+    const userId = await getUserIdByEmail(email);
+
+    if (!userId) {
+        throw new Error(`User with email ${email} not found.`);
+    }
+
     const headers = {
         'Authorization': `OAuth ${YANDEX_TRACKER_OAUTH_TOKEN}`,
         'X-Cloud-Org-ID': YANDEX_TRACKER_ORG_ID,
@@ -99,8 +125,8 @@ const createTask = async (summary, description, login) => {
         summary,
         description,
         queue: YANDEX_TRACKER_QUEUE,
-        followers: [login],
-        author: login,
+        followers: [userId], // Используем ID пользователя
+        author: userId,      // Используем ID пользователя
     };
 
     console.log('Creating task with data:', data); // Логирование данных запроса
@@ -113,6 +139,7 @@ const createTask = async (summary, description, login) => {
         throw error;
     }
 };
+
 
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
