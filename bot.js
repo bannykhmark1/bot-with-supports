@@ -76,7 +76,7 @@ const businessUnitsKeyboard = {
             ['Переработка КМК', 'Консервация КМК'],
             ['РПФ', 'СКХП', 'КСК'],
             ['Розница', 'Pervafood', 'Хлебокомбинат №1', 'УАГ'],
-            ['🔓 Выйти из аккаунта']  // Добавлена кнопка выхода
+            ['🔓 Выйти из аккаунта']
         ],
         one_time_keyboard: true,
         resize_keyboard: true,
@@ -115,10 +115,10 @@ bot.onText(/\/start/, async (msg) => {
     if (user) {
         bot.sendMessage(chatId, 'Привет! Выберите команду для продолжения:', replyKeyboard);
     } else {
-        bot.sendMessage(chatId, 'Привет! Введите вашу корпоративную почту для продолжения:', { 
+        bot.sendMessage(chatId, 'Привет! Введите вашу корпоративную почту для продолжения:', {
             reply_markup: {
                 remove_keyboard: true,
-                keyboard: [['🔓 Выйти из аккаунта']], // Добавлена кнопка выхода при запросе почты
+                keyboard: [['🔓 Выйти из аккаунта']],
             }
         });
         states[chatId] = { state: EMAIL };
@@ -132,20 +132,18 @@ bot.onText(/\/logout/, async (msg) => {
     bot.sendMessage(chatId, 'Вы вышли из аккаунта. Введите вашу корпоративную почту для повторного входа:', {
         reply_markup: {
             remove_keyboard: true,
-            keyboard: [['🔓 Выйти из аккаунта']], // Кнопка выхода в начальном состоянии
+            keyboard: [['🔓 Выйти из аккаунта']],
         }
     });
 });
 
-
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
-    const text = msg.text || '';
+    const text = msg.text?.trim() || '';
 
     console.log('Received message:', text);
     console.log('Current state:', states[chatId]);
 
-    // Логируем все сообщения в базу данных
     try {
         if (text) {
             await MessageLog.create({ telegramId: chatId, message: text });
@@ -154,12 +152,15 @@ bot.on('message', async (msg) => {
         console.error('Error logging message:', error);
     }
 
-    const currentState = states[chatId] ? states[chatId].state : null;
+    const currentState = states[chatId]?.state;
 
     if (text === '❌ Отмена') {
         delete states[chatId];
         bot.sendMessage(chatId, 'Действие отменено.', replyKeyboard);
-    } else if (text === '🔓 Выйти из аккаунта') {
+        return;
+    } 
+
+    if (text === '🔓 Выйти из аккаунта') {
         await TelegramUser.destroy({ where: { telegramId: chatId } });
         delete states[chatId];
         bot.sendMessage(chatId, 'Вы вышли из аккаунта. Введите вашу корпоративную почту для повторного входа:', {
@@ -168,80 +169,181 @@ bot.on('message', async (msg) => {
                 keyboard: [['🔓 Выйти из аккаунта']],
             }
         });
-    } else if (currentState === EMAIL) {
-        // Логика обработки почты (остается без изменений)
-    } else if (currentState === VERIFICATION) {
-        // Логика обработки верификации (остается без изменений)
-    } else if (text === '📝 Создать задачу') {
-        // Логика создания задачи (остается без изменений)
-    } else if (currentState === SUMMARY) {
-        // Логика ввода названия задачи (остается без изменений)
-    } else if (currentState === DESCRIPTION) {
-        if (text === '🔙 Назад') {
-            states[chatId].state = SUMMARY;
-            bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', {
-                reply_markup: {
-                    remove_keyboard: true,
-                    keyboard: [['🔓 Выйти из аккаунта']],
-                }
-            });
-        } else if (text.trim() === '') {
-            bot.sendMessage(chatId, 'Описание задачи не может быть пустым. Пожалуйста, введите описание задачи.', {
-                reply_markup: {
-                    remove_keyboard: true,
-                    keyboard: [['🔓 Выйти из аккаунта']],
-                }
-            });
-        } else {
-            states[chatId].description = text;
-            states[chatId].state = PHONE_NUMBER; // Переход к следующему состоянию
-            bot.sendMessage(chatId, 'Пожалуйста, введите номер телефона для связи.', {
-                reply_markup: {
-                    remove_keyboard: true,
-                    keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
-                    one_time_keyboard: true,
-                    resize_keyboard: true,
-                },
-            });
-        }
-    } else if (currentState === PHONE_NUMBER) {
-        if (text === '🔙 Назад') {
-            states[chatId].state = DESCRIPTION;
-            bot.sendMessage(chatId, 'Пожалуйста, введите описание задачи.', {
-                reply_markup: {
-                    keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
-                    one_time_keyboard: true,
-                    resize_keyboard: true,
-                },
-            });
-        } else if (!/^\+?\d{10,15}$/.test(text.trim())) {
-            bot.sendMessage(chatId, 'Пожалуйста, введите корректный номер телефона (должен содержать от 10 до 15 цифр).', {
-                reply_markup: {
-                    keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
-                    one_time_keyboard: true,
-                    resize_keyboard: true,
-                },
-            });
-        } else {
-            const phoneNumber = text.trim();
-            const summary = `[${states[chatId].businessUnit}] ${states[chatId].summary}`;
-            const description = `${states[chatId].description}\n\nНомер телефона для связи: ${phoneNumber}`;
-            const user = await TelegramUser.findByPk(chatId);
-            const login = user.email.split('@')[0];
-            
-            try {
-                const task = await createTask(summary, description, login);
-                bot.sendMessage(chatId, `Задача успешно создана с идентификатором: ${task.key}: https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`, replyKeyboard);
-            } catch (error) {
-                bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова.', replyKeyboard);
-            }
+        return;
+    } 
 
-            delete states[chatId];
-        }
-    } else if (currentState === BUSINESS_UNIT) {
-        // Логика выбора бизнес-единицы (остается без изменений)
-    } else {
-        bot.sendMessage(chatId, 'Я вас не понимаю. Пожалуйста, выберите команду из меню.', replyKeyboard);
+    switch (currentState) {
+        case EMAIL:
+            handleEmailInput(chatId, text);
+            break;
+        case VERIFICATION:
+            handleVerificationInput(chatId, text);
+            break;
+        case SUMMARY:
+            handleSummaryInput(chatId, text);
+            break;
+        case DESCRIPTION:
+            handleDescriptionInput(chatId, text);
+            break;
+        case PHONE_NUMBER:
+            handlePhoneNumberInput(chatId, text);
+            break;
+        case BUSINESS_UNIT:
+            handleBusinessUnitInput(chatId, text);
+            break;
+        default:
+            if (text === '📝 Создать задачу') {
+                startTaskCreation(chatId);
+            } else {
+                bot.sendMessage(chatId, 'Я вас не понимаю. Пожалуйста, выберите команду из меню.', replyKeyboard);
+            }
+            break;
     }
 });
 
+const handleEmailInput = async (chatId, email) => {
+    const emailParts = email.split('@');
+    const domain = emailParts[1]?.split('.')[0];
+
+    if (!allowedDomains.includes(domain)) {
+        bot.sendMessage(chatId, 'Недопустимый домен почты. Пожалуйста, введите корпоративную почту с допустимым доменом (kurganmk, reftp, hobbs-it).', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔓 Выйти из аккаунта']],
+            }
+        });
+        return;
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000);
+    emailVerificationCodes[chatId] = code;
+
+    try {
+        await sendVerificationEmail(email, code);
+        states[chatId] = { state: VERIFICATION, email };
+        bot.sendMessage(chatId, 'Код подтверждения отправлен на вашу почту. Пожалуйста, введите его для завершения регистрации. Если кода нет в основной папке почты, проверьте папку Спам.', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔓 Выйти из аккаунта']],
+            }
+        });
+    } catch (error) {
+        bot.sendMessage(chatId, 'Ошибка при отправке кода подтверждения. Пожалуйста, попробуйте снова позже.', replyKeyboard);
+    }
+};
+
+const handleVerificationInput = async (chatId, code) => {
+    if (emailVerificationCodes[chatId] === parseInt(code, 10)) {
+        const email = states[chatId].email;
+        await TelegramUser.create({ telegramId: chatId, email });
+        delete states[chatId];
+        bot.sendMessage(chatId, 'Почта успешно подтверждена. Выберите команду для продолжения:', replyKeyboard);
+    } else {
+        bot.sendMessage(chatId, 'Неверный код подтверждения. Пожалуйста, попробуйте снова.', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔓 Выйти из аккаунта']],
+            }
+        });
+    }
+};
+
+const startTaskCreation = async (chatId) => {
+    const user = await TelegramUser.findByPk(chatId);
+    if (user) {
+        states[chatId] = { state: BUSINESS_UNIT };
+        bot.sendMessage(chatId, 'Пожалуйста, выберите бизнес-единицу:', businessUnitsKeyboard);
+    } else {
+        bot.sendMessage(chatId, 'Пожалуйста, сначала войдите в систему, введя свою корпоративную почту.', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔓 Выйти из аккаунта']],
+            }
+        });
+    }
+};
+
+const handleSummaryInput = (chatId, summary) => {
+    if (summary.trim() === '') {
+        bot.sendMessage(chatId, 'Название задачи не может быть пустым. Пожалуйста, введите название задачи.', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔓 Выйти из аккаунта']],
+            }
+        });
+    } else {
+        states[chatId].summary = summary;
+        states[chatId].state = DESCRIPTION;
+        bot.sendMessage(chatId, 'Пожалуйста, введите описание задачи.', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
+                one_time_keyboard: true,
+                resize_keyboard: true,
+            }
+        });
+    }
+};
+
+const handleDescriptionInput = (chatId, description) => {
+    if (description.trim() === '') {
+        bot.sendMessage(chatId, 'Описание задачи не может быть пустым. Пожалуйста, введите описание задачи.', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔓 Выйти из аккаунта']],
+            }
+        });
+    } else {
+        states[chatId].description = description;
+        states[chatId].state = PHONE_NUMBER;
+        bot.sendMessage(chatId, 'Пожалуйста, введите номер телефона для связи.', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
+                one_time_keyboard: true,
+                resize_keyboard: true,
+            }
+        });
+    }
+};
+
+const handlePhoneNumberInput = async (chatId, phoneNumber) => {
+    if (!/^\+?\d{10,15}$/.test(phoneNumber)) {
+        bot.sendMessage(chatId, 'Пожалуйста, введите корректный номер телефона (должен содержать от 10 до 15 цифр).', {
+            reply_markup: {
+                remove_keyboard: true,
+                keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
+                one_time_keyboard: true,
+                resize_keyboard: true,
+            }
+        });
+        return;
+    }
+
+    const summary = `[${states[chatId].businessUnit}] ${states[chatId].summary}`;
+    const description = `${states[chatId].description}\n\nНомер телефона для связи: ${phoneNumber}`;
+    const user = await TelegramUser.findByPk(chatId);
+    const login = user.email.split('@')[0];
+
+    try {
+        const task = await createTask(summary, description, login);
+        bot.sendMessage(chatId, `Задача успешно создана с идентификатором: ${task.key}: https://tracker.yandex.ru/${task.key}. Пожалуйста, для дальнейшего диалога по вашему вопросу - пишите в таск в трекере (вначале сообщения ссылка на него). Инструкция по тому, как общаться в Трекере: https://wiki.yandex.ru/users/mbannykh/sapport.-pervaja-linija/instrukcija-po-jandeks-trekeru/`, replyKeyboard);
+    } catch (error) {
+        bot.sendMessage(chatId, 'Ошибка при создании задачи. Пожалуйста, попробуйте снова.', replyKeyboard);
+    }
+
+    delete states[chatId];
+};
+
+const handleBusinessUnitInput = (chatId, businessUnit) => {
+    states[chatId].businessUnit = businessUnit;
+    states[chatId].state = SUMMARY;
+    bot.sendMessage(chatId, 'Пожалуйста, введите название задачи.', {
+        reply_markup: {
+            remove_keyboard: true,
+            keyboard: [['🔙 Назад', '❌ Отмена'], ['🔓 Выйти из аккаунта']],
+            one_time_keyboard: true,
+            resize_keyboard: true,
+        }
+    });
+};
