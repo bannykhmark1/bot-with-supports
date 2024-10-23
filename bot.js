@@ -22,7 +22,7 @@ const VERIFICATION = 'VERIFICATION';
 const BUSINESS_UNIT = 'BUSINESS_UNIT';
 const PHONE_NUMBER = 'PHONE_NUMBER';
 
-const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it'];
+const allowedDomains = ['kurganmk', 'reftp', 'hobbs-it', 'skhp-ural'];
 const emailVerificationCodes = {};
 
 const transporter = nodemailer.createTransport({
